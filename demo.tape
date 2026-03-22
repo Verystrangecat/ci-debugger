@@ -21,6 +21,4 @@ Sleep 2.5s
 
 Type "bash demo-script.sh"
 Enter
-Sleep 6s
-
-Sleep 3s
+Sleep 14s
