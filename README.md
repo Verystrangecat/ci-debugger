@@ -4,6 +4,8 @@
 
 You shouldn't have to push 47 commits to figure out why your CI is failing.
 
+![ci-debugger demo](assets/demo.gif)
+
 ```
 ci-debugger run --step
 ```
