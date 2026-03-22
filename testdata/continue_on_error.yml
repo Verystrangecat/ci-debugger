@@ -1,0 +1,14 @@
+name: Continue On Error
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Failing step
+        run: exit 42
+        continue-on-error: true
+
+      - name: This still runs
+        run: echo "I run despite the failure above"

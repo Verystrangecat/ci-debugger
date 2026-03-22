@@ -1,0 +1,16 @@
+name: Failing Workflow
+
+on: [push]
+
+jobs:
+  fail-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: This passes
+        run: echo "I am fine"
+
+      - name: This fails
+        run: exit 1
+
+      - name: This should be skipped
+        run: echo "You should not see me"

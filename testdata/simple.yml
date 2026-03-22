@@ -1,0 +1,22 @@
+name: Simple Test
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say hello
+        run: echo "Hello from ci-debugger!"
+
+      - name: Show environment
+        run: |
+          echo "CI=$CI"
+          echo "GITHUB_ACTIONS=$GITHUB_ACTIONS"
+          echo "WORKSPACE=$GITHUB_WORKSPACE"
+
+      - name: Multi-line script
+        run: |
+          for i in 1 2 3; do
+            echo "Iteration $i"
+          done

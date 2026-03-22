@@ -1,0 +1,6 @@
+bin/
+.env
+.secrets
+*.test
+coverage.out
+dist/
