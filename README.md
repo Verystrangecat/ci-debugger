@@ -1,6 +1,6 @@
 # ci-debugger
 
-**Debug GitHub Actions workflows locally — with breakpoints.**
+**Debug CI pipelines locally — with breakpoints.**
 
 You shouldn't have to push 47 commits to figure out why your CI is failing.
 
@@ -81,6 +81,130 @@ root@abc123:/github/workspace# exit
 
 The container state is preserved — continue from where you left off.
 
+### Matrix Builds
+
+Workflows with `strategy.matrix` are automatically expanded and run as separate jobs, each with its own container:
+
+```yaml
+strategy:
+  matrix:
+    node-version: [18, 20]
+    os: [ubuntu-latest]
+```
+
+```
+Matrix: 2 combination(s) for job "test"
+
+▶ test (node-version=18, os=ubuntu-latest)
+  ✓ [1/3] Checkout
+  ✓ [2/3] Use Node.js 18
+  ✓ [3/3] Run tests
+
+▶ test (node-version=20, os=ubuntu-latest)
+  ✓ [1/3] Checkout
+  ✓ [2/3] Use Node.js 20
+  ✓ [3/3] Run tests
+```
+
+Use `${{ matrix.node-version }}` in your steps — expressions are expanded per combination. `fail-fast` is respected (default: true).
+
+### Service Containers
+
+Sidecar services (postgres, redis, mysql, etc.) are started automatically when your job defines them:
+
+```yaml
+services:
+  postgres:
+    image: postgres:15
+    env:
+      POSTGRES_PASSWORD: secret
+```
+
+Services are reachable by hostname (`postgres`, `redis`, etc.) inside your job container via a shared Docker bridge network.
+
+### Composite `uses:` Actions
+
+`actions/checkout` is handled automatically (your workspace is already mounted). For other `uses:` steps, ci-debugger fetches the `action.yml` from GitHub and runs composite actions inline in your container:
+
+```
+↓ fetching actions/setup-node@v4...
+▶ running composite action (3 step(s))
+  ✓ [1/3] Set up Node
+  ✓ [2/3] Install dependencies
+  ✓ [3/3] Cache
+```
+
+Node and Docker action types are skipped with a warning.
+
+### Azure DevOps Pipelines
+
+Point ci-debugger at an `azure-pipelines.yml` — it auto-detects the format and maps it to the same runner:
+
+```bash
+ci-debugger run -W azure-pipelines.yml
+```
+
+```
+Detected Azure DevOps pipeline: azure-pipelines.yml
+
+▶ Build  (ghcr.io/catthehacker/ubuntu:act-latest)
+  ✓ [1/3] Checkout
+  ✓ [2/3] Build
+  ✓ [3/3] Run unit tests
+```
+
+Supports: `script:` / `bash:`, `task:` (skipped with warning), `checkout: self`, `pool.vmImage`, `variables`, `dependsOn`, `condition`, stages, and top-level steps. If there's no `azure-pipelines.yml` in `.github/workflows/`, ci-debugger also looks for it in the project root automatically.
+
+### Static Analysis
+
+Scan your workflows before running them:
+
+```bash
+ci-debugger scan
+```
+
+```
+Scan Results  (3 workflow(s))
+────────────────────────────────────────────────────────────────
+  ✖ error
+    location: ci.yml > deploy > "Deploy to prod"
+    needs: references unknown job "release"
+
+  ⚠ warning
+    location: ci.yml > test > step 2
+    uses: "actions/setup-python@v4" is not supported locally — will be skipped
+────────────────────────────────────────────────────────────────
+  1 error(s), 1 warning(s)
+```
+
+Catches: circular job dependencies, invalid `needs:` references, unsupported `uses:` actions, steps missing `run:` or `uses:`, and unclosed `${{ }}` expressions.
+
+### Env Var Transparency
+
+See exactly which GitHub environment variables are real, stubbed, or unavailable locally before running:
+
+```bash
+ci-debugger run --env-report -W .github/workflows/ci.yml
+```
+
+```
+Environment Variables Report
+────────────────────────────────────────────────────────────────────────
+  Variable                               Status         Value
+────────────────────────────────────────────────────────────────────────
+  GITHUB_ACTIONS                         real           true
+  GITHUB_SHA                             real           a3f4b2c1d...
+  GITHUB_REPOSITORY                      real           owner/repo
+  GITHUB_REF                             real           refs/heads/main
+  GITHUB_WORKSPACE                       stubbed        /github/workspace
+  RUNNER_OS                              stubbed        Linux
+  GITHUB_TOKEN                           unavailable    (injected by GitHub)
+  ACTIONS_ID_TOKEN_REQUEST_URL           unavailable    (OIDC not available locally)
+────────────────────────────────────────────────────────────────────────
+
+  Legend:  real = from local git   stubbed = fixed local value   unavailable = GitHub-only
+```
+
 ### Beautiful Output
 
 Clean, color-coded output that shows what matters:
@@ -118,10 +242,14 @@ ci-debugger  My CI Workflow
 | Breakpoints | ✓ | ✗ |
 | Step-by-step mode | ✓ | ✗ |
 | Interactive shell at breakpoint | ✓ | ✗ |
+| Matrix builds | ✓ | ✓ |
+| Service containers | ✓ | ✓ |
+| Composite `uses:` actions | ✓ | ✓ |
+| Azure DevOps Pipelines | ✓ | ✗ |
+| Static analysis (`scan`) | ✓ | ✗ |
+| Env var transparency (`--env-report`) | ✓ | ✗ |
 | Clean, readable output | ✓ | ✗ (70K log lines) |
-| GITHUB_OUTPUT support | ✓ | ✓ |
-| `actions/checkout` support | ✓ (workspace mounted) | ✓ |
-| Full actions/\* support | Partial (coming soon) | Partial |
+| `GITHUB_OUTPUT` support | ✓ | ✓ |
 | Windows runners | ✗ | ✗ |
 
 ---
@@ -157,14 +285,23 @@ Download from [Releases](https://github.com/murataslan1/ci-debugger/releases).
 # In your project directory
 cd your-project/
 
-# List available workflows
+# List available workflows and jobs
 ci-debugger list
+
+# Scan for issues before running
+ci-debugger scan
+
+# Check which env vars are real vs stubbed
+ci-debugger run --env-report
 
 # Run with step-by-step mode
 ci-debugger run --step
 
 # Run specific workflow
 ci-debugger run -W .github/workflows/ci.yml
+
+# Run an Azure DevOps pipeline
+ci-debugger run -W azure-pipelines.yml
 
 # Run specific job
 ci-debugger run -j test
@@ -224,25 +361,29 @@ ci-debugger run --platform ubuntu-latest=my-registry/ubuntu:custom
 
 ## Known Limitations
 
-- **Linux runners only** — `windows-latest` and `macos-latest` are not supported
-- **`uses:` actions** — `actions/checkout` is handled automatically (workspace is mounted). Other actions are skipped with a warning. Convert to `run:` steps as a workaround
-- **Expression evaluation** — Basic `${{ env.X }}` and `${{ secrets.X }}` are supported. Complex expressions may not evaluate correctly
-
-These are all planned improvements. Contributions welcome!
+- **Linux runners only** — `windows-latest` and `macos-latest` map to the ubuntu image as best-effort
+- **Node/Docker `uses:` actions** — composite actions run inline; node and docker action types are skipped with a warning
+- **Expression evaluation** — `${{ env.X }}`, `${{ secrets.X }}`, `${{ matrix.X }}`, and `${{ inputs.X }}` are supported. Complex expressions may not evaluate correctly
 
 ---
 
 ## Roadmap
 
-### v0.2 — Core gaps
-- [ ] [`uses:` action support](https://github.com/murataslan1/ci-debugger/issues/1) — execute setup-node, setup-go, and other common actions locally
-- [ ] [Env var transparency](https://github.com/murataslan1/ci-debugger/issues/3) — `--env-report` flag showing what's real, stubbed, or missing vs GitHub runners
-- [ ] [Full `.github/` folder scanning](https://github.com/murataslan1/ci-debugger/issues/4) — `ci-debugger scan` for static analysis across all workflows
+### v0.2 — Core gaps ✓
+- [x] [`uses:` composite action support](https://github.com/murataslan1/ci-debugger/issues/1)
+- [x] [Env var transparency (`--env-report`)](https://github.com/murataslan1/ci-debugger/issues/3)
+- [x] [Static analysis (`ci-debugger scan`)](https://github.com/murataslan1/ci-debugger/issues/4)
 
-### v0.3 — Expansion
-- [ ] [Azure DevOps Pipelines support](https://github.com/murataslan1/ci-debugger/issues/5)
-- [ ] [Service containers](https://github.com/murataslan1/ci-debugger/issues/6) — postgres, redis, mysql sidecars
-- [ ] [Matrix builds](https://github.com/murataslan1/ci-debugger/issues/7) — expand and debug matrix strategy runs
+### v0.3 — Expansion ✓
+- [x] [Azure DevOps Pipelines support](https://github.com/murataslan1/ci-debugger/issues/5)
+- [x] [Service containers](https://github.com/murataslan1/ci-debugger/issues/6)
+- [x] [Matrix builds](https://github.com/murataslan1/ci-debugger/issues/7)
+
+### v0.4 — Coming up
+- [ ] Node/Docker `uses:` action execution
+- [ ] Full `${{ }}` expression engine
+- [ ] Workflow `outputs:` propagation across jobs
+- [ ] `--watch` mode — re-run on file change
 
 Have an idea? [Open an issue](https://github.com/murataslan1/ci-debugger/issues/new).
 
