@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/murataslan1/ci-debugger/internal/azdevops"
 	"github.com/murataslan1/ci-debugger/internal/debugger"
 	"github.com/murataslan1/ci-debugger/internal/docker"
 	"github.com/murataslan1/ci-debugger/internal/runner"
@@ -57,7 +58,12 @@ func newRunCmd() *cobra.Command {
 			var wf *workflow.Workflow
 			if workflowFile != "" {
 				var err error
-				wf, err = workflow.ParseFile(workflowFile)
+				if azdevops.IsPipelineFile(workflowFile) {
+					fmt.Printf("Detected Azure DevOps pipeline: %s\n", workflowFile)
+					wf, err = azdevops.ParseFile(workflowFile)
+				} else {
+					wf, err = workflow.ParseFile(workflowFile)
+				}
 				if err != nil {
 					return err
 				}
@@ -65,11 +71,19 @@ func newRunCmd() *cobra.Command {
 				cwd, _ := os.Getwd()
 				workflows, err := workflow.DiscoverWorkflows(cwd)
 				if err != nil {
-					return err
+					// No GitHub Actions workflows — try Azure DevOps
+					azPipelines, azErr := azdevops.DiscoverPipelines(cwd)
+					if azErr != nil || len(azPipelines) == 0 {
+						return err // return original error
+					}
+					workflows = azPipelines
+					fmt.Printf("Detected Azure DevOps pipeline: %s\n", workflows[0].FileName)
 				}
 				if len(workflows) == 1 {
 					wf = workflows[0]
-					fmt.Printf("Using workflow: %s\n", wf.FileName)
+					if !azdevops.IsPipelineFile(wf.FileName) {
+						fmt.Printf("Using workflow: %s\n", wf.FileName)
+					}
 				} else {
 					// Show picker
 					fmt.Println("Multiple workflows found. Select one with -W:")
