@@ -30,6 +30,7 @@ No more blind YAML commits.`,
 
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newListCmd())
+	root.AddCommand(newScanCmd())
 
 	return root
 }
