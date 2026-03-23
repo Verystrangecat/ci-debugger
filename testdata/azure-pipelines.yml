@@ -1,0 +1,21 @@
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+- job: Build
+  displayName: Build
+  steps:
+  - checkout: self
+
+  - script: |
+      echo "Building application..."
+      echo "Build successful"
+    displayName: Build
+
+  - script: |
+      echo "Running unit tests..."
+      echo "All tests passed"
+    displayName: Run unit tests

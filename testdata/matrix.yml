@@ -1,0 +1,20 @@
+name: Matrix CI
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+        os: [ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        run: echo "Setting up Node.js ${{ matrix.node-version }}"
+
+      - name: Run tests
+        run: echo "All tests passed on Node ${{ matrix.node-version }}"

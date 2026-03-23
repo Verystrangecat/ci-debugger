@@ -1,11 +1,9 @@
 Output assets/demo.gif
-
 Require echo
-
 Set Shell zsh
-Set FontSize 14
-Set Width 900
-Set Height 540
+Set FontSize 13
+Set Width 1100
+Set Height 680
 Set Theme "Catppuccin Mocha"
 Set Padding 20
 
@@ -15,10 +13,6 @@ Enter
 Sleep 200ms
 Show
 
-Type "bin/ci-debugger list"
-Enter
-Sleep 2.5s
-
 Type "bash demo-script.sh"
 Enter
-Sleep 14s
+Sleep 48s
