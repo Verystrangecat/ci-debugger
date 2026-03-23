@@ -118,4 +118,7 @@ type RunConfig struct {
 	BreakBefore  []string
 	BreakAfter   []string
 	BreakOnError bool
+
+	// Reporting
+	EnvReport bool
 }

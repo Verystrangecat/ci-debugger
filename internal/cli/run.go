@@ -29,6 +29,8 @@ func newRunCmd() *cobra.Command {
 		breakBefore  []string
 		breakAfter   []string
 		breakOnError bool
+		// Reporting
+		envReport bool
 	)
 
 	cmd := &cobra.Command{
@@ -78,6 +80,12 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			// Handle --env-report before connecting to Docker
+			if envReport {
+				runner.PrintEnvReport(wf)
+				return nil
+			}
+
 			// Connect to Docker
 			dockerClient, err := docker.NewClient()
 			if err != nil {
@@ -112,6 +120,7 @@ func newRunCmd() *cobra.Command {
 				BreakBefore:       breakBefore,
 				BreakAfter:        breakAfter,
 				BreakOnError:      breakOnError,
+				EnvReport:         envReport,
 			}
 
 			r := runner.NewRunner(wf, cfg, dockerClient)
@@ -174,6 +183,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&breakBefore, "break-before", nil, "Break before a named step (can be specified multiple times)")
 	cmd.Flags().StringArrayVar(&breakAfter, "break-after", nil, "Break after a named step")
 	cmd.Flags().BoolVar(&breakOnError, "break-on-error", false, "Break after any step that fails")
+	cmd.Flags().BoolVar(&envReport, "env-report", false, "Show which GitHub env vars are real, stubbed, or unavailable locally, then exit")
 
 	return cmd
 }
