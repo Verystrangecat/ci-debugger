@@ -232,6 +232,22 @@ These are all planned improvements. Contributions welcome!
 
 ---
 
+## Roadmap
+
+### v0.2 — Core gaps
+- [ ] [`uses:` action support](https://github.com/murataslan1/ci-debugger/issues/1) — execute setup-node, setup-go, and other common actions locally
+- [ ] [Env var transparency](https://github.com/murataslan1/ci-debugger/issues/3) — `--env-report` flag showing what's real, stubbed, or missing vs GitHub runners
+- [ ] [Full `.github/` folder scanning](https://github.com/murataslan1/ci-debugger/issues/4) — `ci-debugger scan` for static analysis across all workflows
+
+### v0.3 — Expansion
+- [ ] [Azure DevOps Pipelines support](https://github.com/murataslan1/ci-debugger/issues/5)
+- [ ] [Service containers](https://github.com/murataslan1/ci-debugger/issues/6) — postgres, redis, mysql sidecars
+- [ ] [Matrix builds](https://github.com/murataslan1/ci-debugger/issues/7) — expand and debug matrix strategy runs
+
+Have an idea? [Open an issue](https://github.com/murataslan1/ci-debugger/issues/new).
+
+---
+
 ## Contributing
 
 Pull requests are welcome. For major changes, open an issue first.
