@@ -355,10 +355,108 @@ func (r *Runner) executeUsesStep(ctx context.Context, jobCtx *JobContext, step *
 		return result
 	}
 
-	// actions/setup-go, actions/setup-node etc. — warn and skip
-	fmt.Fprintf(os.Stdout, "    ⚠ Action '%s' not yet supported — skipping\n", step.Uses)
-	fmt.Fprintf(os.Stdout, "      Convert to a 'run:' step or use --skip-uses to suppress\n")
-	result.Status = StepStatusSkipped
+	// Try to fetch the action definition from GitHub
+	fmt.Fprintf(os.Stdout, "    ↓ fetching %s...\n", step.Uses)
+	actionDef, err := fetchActionDef(step.Uses)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "    ⚠ could not fetch action: %v — skipping\n", err)
+		result.Status = StepStatusSkipped
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	switch actionDef.Runs.Using {
+	case "composite":
+		fmt.Fprintf(os.Stdout, "    ▶ running composite action (%d step(s))\n", len(actionDef.Runs.Steps))
+		return r.executeCompositeAction(ctx, jobCtx, step, actionDef, index, start)
+	default:
+		fmt.Fprintf(os.Stdout, "    ⚠ action type %q not supported locally — skipping\n", actionDef.Runs.Using)
+		result.Status = StepStatusSkipped
+		result.Duration = time.Since(start)
+		return result
+	}
+}
+
+func (r *Runner) executeCompositeAction(ctx context.Context, jobCtx *JobContext, step *workflow.Step, actionDef *ActionDef, index int, start time.Time) *StepResult {
+	result := &StepResult{
+		Step:  step,
+		Index: index,
+	}
+
+	// Build INPUT_* env vars and inputs map for expression expansion
+	inputEnv := buildInputEnv(actionDef.Inputs, step.With)
+	inputs := inputMap(actionDef.Inputs, step.With)
+
+	compositeOutputs := map[string]string{}
+
+	for i, actionStep := range actionDef.Runs.Steps {
+		// Evaluate if: condition
+		if actionStep.If != "" && !r.evaluateCondition(actionStep.If, jobCtx) {
+			continue
+		}
+
+		if actionStep.Run == "" {
+			// uses: inside composite — not yet supported, skip silently
+			continue
+		}
+
+		// Merge env: job env + INPUT_* + action step env
+		stepEnv := MergeEnvMaps(jobCtx.Env, inputEnv, actionStep.Env)
+
+		// Expand expressions (including ${{ inputs.X }})
+		runScript := r.expandExpressionsWithInputs(actionStep.Run, jobCtx, inputs)
+
+		scriptPath := fmt.Sprintf("/tmp/__ci_debugger_step_%d_%d.sh", index, i)
+		if err := r.docker.WriteScript(ctx, jobCtx.ContainerID, scriptPath, runScript); err != nil {
+			result.Status = StepStatusFailed
+			result.Stderr = fmt.Sprintf("composite action: failed to write script: %v", err)
+			result.Duration = time.Since(start)
+			return result
+		}
+
+		shell := actionStep.Shell
+		if shell == "" {
+			shell = "bash"
+		}
+		cmd, _ := WrapCommand(runScript, shell, scriptPath)
+
+		workDir := "/github/workspace"
+		if actionStep.WorkingDir != "" {
+			if strings.HasPrefix(actionStep.WorkingDir, "/") {
+				workDir = actionStep.WorkingDir
+			} else {
+				workDir = "/github/workspace/" + actionStep.WorkingDir
+			}
+		}
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutWriter := io.MultiWriter(&stdoutBuf, &prefixWriter{prefix: "    ", out: os.Stdout, verbose: r.cfg.Verbose})
+		stderrWriter := io.MultiWriter(&stderrBuf, &prefixWriter{prefix: "    \033[31m", suffix: "\033[0m", out: os.Stderr, verbose: r.cfg.Verbose})
+
+		exitCode, err := r.docker.ExecStreaming(ctx, jobCtx.ContainerID, docker.ExecOpts{
+			Cmd:     cmd,
+			Env:     EnvMapToSlice(stepEnv),
+			WorkDir: workDir,
+		}, stdoutWriter, stderrWriter)
+
+		if (err != nil || exitCode != 0) && !actionStep.ContinueOnError {
+			result.Status = StepStatusFailed
+			result.ExitCode = exitCode
+			result.Stdout = stdoutBuf.String()
+			result.Stderr = stderrBuf.String()
+			result.Duration = time.Since(start)
+			return result
+		}
+
+		// Collect outputs from this composite sub-step
+		for k, v := range r.captureOutputs(ctx, jobCtx.ContainerID) {
+			compositeOutputs[k] = v
+		}
+		r.applyGitHubEnv(ctx, jobCtx)
+	}
+
+	result.Status = StepStatusPassed
+	result.Outputs = compositeOutputs
 	result.Duration = time.Since(start)
 	return result
 }
@@ -457,6 +555,22 @@ func (r *Runner) expandExpressions(s string, jobCtx *JobContext) string {
 	for k, v := range jobCtx.Secrets {
 		result = strings.ReplaceAll(result, "${{ secrets."+k+" }}", v)
 		result = strings.ReplaceAll(result, "${{secrets."+k+"}}", v)
+	}
+	return result
+}
+
+// expandExpressionsWithInputs extends expandExpressions with ${{ inputs.X }}
+// and ${{ steps.ID.outputs.KEY }} support for composite action steps.
+func (r *Runner) expandExpressionsWithInputs(s string, jobCtx *JobContext, inputs map[string]string) string {
+	result := r.expandExpressions(s, jobCtx)
+	for k, v := range inputs {
+		result = strings.ReplaceAll(result, "${{ inputs."+k+" }}", v)
+		result = strings.ReplaceAll(result, "${{inputs."+k+"}}", v)
+	}
+	for stepID, outputs := range jobCtx.StepOutputs {
+		for outKey, outVal := range outputs {
+			result = strings.ReplaceAll(result, "${{ steps."+stepID+".outputs."+outKey+" }}", outVal)
+		}
 	}
 	return result
 }
