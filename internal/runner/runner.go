@@ -123,12 +123,53 @@ func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job
 	githubEnv := BuildGitHubEnv(r.wf, job, workspaceDir)
 	mergedEnv := MergeEnvMaps(githubEnv, r.wf.Env, job.Env, r.env)
 
-	// Create container
+	// Create a Docker network if the job has services
+	networkID := ""
+	if len(job.Services) > 0 {
+		netName := fmt.Sprintf("ci-debugger-%s", jobID)
+		id, err := r.docker.CreateNetwork(ctx, netName)
+		if err != nil {
+			return nil, fmt.Errorf("creating network: %w", err)
+		}
+		networkID = id
+		defer r.docker.RemoveNetwork(ctx, networkID)
+
+		// Start service containers
+		for svcName, svc := range job.Services {
+			svcImage := svc.Image
+			exists, _ := r.docker.ImageExists(ctx, svcImage)
+			if !exists {
+				fmt.Printf("  Pulling service image %s (%s)...\n", svcName, svcImage)
+				if err := r.docker.PullImage(ctx, svcImage); err != nil {
+					return nil, fmt.Errorf("pulling service image %q: %w", svcImage, err)
+				}
+			}
+
+			svcID, err := r.docker.CreateServiceContainer(ctx, docker.ContainerOpts{
+				Image:   svcImage,
+				Name:    svcName,
+				Env:     EnvMapToSlice(svc.Env),
+				Network: networkID,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("creating service %q: %w", svcName, err)
+			}
+			defer r.docker.StopAndRemove(ctx, svcID)
+
+			if err := r.docker.StartContainer(ctx, svcID); err != nil {
+				return nil, fmt.Errorf("starting service %q: %w", svcName, err)
+			}
+			fmt.Printf("  \033[90mService %q started (%s) — accessible as hostname %q\033[0m\n", svcName, svcImage, svcName)
+		}
+	}
+
+	// Create job container (attach to network if services are running)
 	containerID, err := r.docker.CreateContainer(ctx, docker.ContainerOpts{
 		Image:   image,
 		WorkDir: "/github/workspace",
 		Env:     EnvMapToSlice(mergedEnv),
 		Binds:   []string{workspaceDir + ":/github/workspace"},
+		Network: networkID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating container: %w", err)

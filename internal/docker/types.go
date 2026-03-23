@@ -8,6 +8,7 @@ type ContainerOpts struct {
 	Binds   []string // host:container[:options]
 	WorkDir string
 	Labels  map[string]string
+	Network string // Docker network ID or name to attach to
 }
 
 // ExecOpts configures an exec in a running container.

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
@@ -39,9 +40,57 @@ func (c *Client) CreateContainer(ctx context.Context, opts ContainerOpts) (strin
 		Binds: opts.Binds,
 	}
 
-	resp, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, opts.Name)
+	var netCfg *network.NetworkingConfig
+	if opts.Network != "" {
+		netCfg = &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				opts.Network: {},
+			},
+		}
+	}
+
+	resp, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, nil, opts.Name)
 	if err != nil {
 		return "", fmt.Errorf("creating container: %w", err)
+	}
+
+	return resp.ID, nil
+}
+
+// CreateServiceContainer creates a service sidecar container using the image's
+// own CMD/ENTRYPOINT (not overridden), and registers the service name as a
+// network alias so job steps can reach it by hostname.
+func (c *Client) CreateServiceContainer(ctx context.Context, opts ContainerOpts) (string, error) {
+	labels := map[string]string{"ci-debugger": "true"}
+	for k, v := range opts.Labels {
+		labels[k] = v
+	}
+
+	cfg := &container.Config{
+		Image:  opts.Image,
+		Env:    opts.Env,
+		Labels: labels,
+		// No Entrypoint override — let the image run its own process
+	}
+
+	hostCfg := &container.HostConfig{
+		Binds: opts.Binds,
+	}
+
+	var netCfg *network.NetworkingConfig
+	if opts.Network != "" {
+		netCfg = &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				opts.Network: {
+					Aliases: []string{opts.Name},
+				},
+			},
+		}
+	}
+
+	resp, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, netCfg, nil, opts.Name)
+	if err != nil {
+		return "", fmt.Errorf("creating service container %q: %w", opts.Name, err)
 	}
 
 	return resp.ID, nil
