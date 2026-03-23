@@ -18,16 +18,24 @@ type Workflow struct {
 
 // Job represents a single job in the workflow.
 type Job struct {
-	Name           string             `yaml:"name"`
-	RunsOn         StringOrSlice      `yaml:"runs-on"`
-	Needs          StringOrSlice      `yaml:"needs"`
-	If             string             `yaml:"if"`
-	Env            map[string]string  `yaml:"env"`
-	Steps          []*Step            `yaml:"steps"`
-	TimeoutMinutes int                `yaml:"timeout-minutes"`
-	Outputs        map[string]string  `yaml:"outputs"`
-	Container      *ContainerConfig   `yaml:"container"`
+	Name           string              `yaml:"name"`
+	RunsOn         StringOrSlice       `yaml:"runs-on"`
+	Needs          StringOrSlice       `yaml:"needs"`
+	If             string              `yaml:"if"`
+	Env            map[string]string   `yaml:"env"`
+	Steps          []*Step             `yaml:"steps"`
+	TimeoutMinutes int                 `yaml:"timeout-minutes"`
+	Outputs        map[string]string   `yaml:"outputs"`
+	Container      *ContainerConfig    `yaml:"container"`
 	Services       map[string]*Service `yaml:"services"`
+	Strategy       *Strategy           `yaml:"strategy"`
+}
+
+// Strategy holds the job matrix strategy.
+type Strategy struct {
+	Matrix      map[string][]interface{} `yaml:"matrix"`
+	FailFast    *bool                    `yaml:"fail-fast"`
+	MaxParallel int                      `yaml:"max-parallel"`
 }
 
 // DisplayName returns a human-friendly name for the job.

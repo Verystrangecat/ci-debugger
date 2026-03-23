@@ -74,16 +74,37 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			}
 
 			job := r.wf.Jobs[jobID]
-			jobResult, err := r.executeJob(ctx, jobID, job)
-			if err != nil {
-				return nil, err
-			}
-			result.JobResults = append(result.JobResults, jobResult)
+			combos := workflow.ExpandMatrix(job)
 
-			// Stop on job failure
-			if jobResult.Status == JobStatusFailed {
-				result.Duration = time.Since(start)
-				return result, nil
+			if len(combos) == 0 {
+				// No matrix — run once
+				jobResult, err := r.executeJob(ctx, jobID, job, nil)
+				if err != nil {
+					return nil, err
+				}
+				result.JobResults = append(result.JobResults, jobResult)
+				if jobResult.Status == JobStatusFailed {
+					result.Duration = time.Since(start)
+					return result, nil
+				}
+			} else {
+				// Matrix — run once per combination
+				fmt.Printf("\n  Matrix: %d combination(s) for job %q\n", len(combos), jobID)
+				for _, combo := range combos {
+					matrixID := jobID + workflow.MatrixSuffix(combo)
+					jobResult, err := r.executeJob(ctx, matrixID, job, combo)
+					if err != nil {
+						return nil, err
+					}
+					result.JobResults = append(result.JobResults, jobResult)
+					if jobResult.Status == JobStatusFailed {
+						// Respect fail-fast (default true)
+						if job.Strategy.FailFast == nil || *job.Strategy.FailFast {
+							result.Duration = time.Since(start)
+							return result, nil
+						}
+					}
+				}
 			}
 		}
 	}
@@ -92,7 +113,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	return result, nil
 }
 
-func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job) (*JobResult, error) {
+func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job, matrix map[string]string) (*JobResult, error) {
 	start := time.Now()
 	jobName := job.DisplayName(jobID)
 
@@ -194,6 +215,7 @@ func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job
 		Env:          mergedEnv,
 		Secrets:      r.secrets,
 		StepOutputs:  map[string]map[string]string{},
+		Matrix:       matrix,
 	}
 
 	// Attach debugger to container
@@ -587,7 +609,6 @@ func (r *Runner) evaluateCondition(condition string, jobCtx *JobContext) bool {
 
 // expandExpressions does basic ${{ }} expansion.
 func (r *Runner) expandExpressions(s string, jobCtx *JobContext) string {
-	// Very simple: replace ${{ env.X }} and ${{ secrets.X }}
 	result := s
 	for k, v := range jobCtx.Env {
 		result = strings.ReplaceAll(result, "${{ env."+k+" }}", v)
@@ -596,6 +617,10 @@ func (r *Runner) expandExpressions(s string, jobCtx *JobContext) string {
 	for k, v := range jobCtx.Secrets {
 		result = strings.ReplaceAll(result, "${{ secrets."+k+" }}", v)
 		result = strings.ReplaceAll(result, "${{secrets."+k+"}}", v)
+	}
+	for k, v := range jobCtx.Matrix {
+		result = strings.ReplaceAll(result, "${{ matrix."+k+" }}", v)
+		result = strings.ReplaceAll(result, "${{matrix."+k+"}}", v)
 	}
 	return result
 }

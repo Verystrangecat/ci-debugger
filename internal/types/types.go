@@ -101,6 +101,7 @@ type JobContext struct {
 	Env          map[string]string
 	Secrets      map[string]string
 	StepOutputs  map[string]map[string]string // stepID -> outputs
+	Matrix       map[string]string            // matrix variable values for this run
 }
 
 // RunConfig holds options for a workflow run.
