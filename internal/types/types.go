@@ -82,6 +82,7 @@ type JobResult struct {
 	Status      JobStatus
 	StepResults []*StepResult
 	Duration    time.Duration
+	Outputs     map[string]string
 }
 
 // RunResult captures the outcome of a full workflow run.
@@ -102,6 +103,7 @@ type JobContext struct {
 	Secrets      map[string]string
 	StepOutputs  map[string]map[string]string // stepID -> outputs
 	Matrix       map[string]string            // matrix variable values for this run
+	NeedsOutputs map[string]map[string]string // depJobID -> outputKey -> value
 }
 
 // RunConfig holds options for a workflow run.
@@ -122,4 +124,7 @@ type RunConfig struct {
 
 	// Reporting
 	EnvReport bool
+
+	// Watch mode
+	Watch bool
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/murataslan1/ci-debugger/internal/debugger"
 	"github.com/murataslan1/ci-debugger/internal/docker"
+	"github.com/murataslan1/ci-debugger/internal/expr"
 	"github.com/murataslan1/ci-debugger/internal/ui"
 	"github.com/murataslan1/ci-debugger/internal/workflow"
 )
@@ -66,6 +67,8 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		WorkflowName: r.wf.Name,
 	}
 
+	allJobOutputs := map[string]map[string]string{}
+
 	for _, layer := range layers {
 		for _, jobID := range layer {
 			// Apply job filter
@@ -74,15 +77,27 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			}
 
 			job := r.wf.Jobs[jobID]
+
+			// Build needs outputs for this job
+			needsOutputs := map[string]map[string]string{}
+			for _, dep := range job.Needs {
+				if outs, ok := allJobOutputs[dep]; ok {
+					needsOutputs[dep] = outs
+				}
+			}
+
 			combos := workflow.ExpandMatrix(job)
 
 			if len(combos) == 0 {
 				// No matrix — run once
-				jobResult, err := r.executeJob(ctx, jobID, job, nil)
+				jobResult, err := r.executeJob(ctx, jobID, job, nil, needsOutputs)
 				if err != nil {
 					return nil, err
 				}
 				result.JobResults = append(result.JobResults, jobResult)
+				if len(jobResult.Outputs) > 0 {
+					allJobOutputs[jobID] = jobResult.Outputs
+				}
 				if jobResult.Status == JobStatusFailed {
 					result.Duration = time.Since(start)
 					return result, nil
@@ -92,11 +107,14 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 				fmt.Printf("\n  Matrix: %d combination(s) for job %q\n", len(combos), jobID)
 				for _, combo := range combos {
 					matrixID := jobID + workflow.MatrixSuffix(combo)
-					jobResult, err := r.executeJob(ctx, matrixID, job, combo)
+					jobResult, err := r.executeJob(ctx, matrixID, job, combo, needsOutputs)
 					if err != nil {
 						return nil, err
 					}
 					result.JobResults = append(result.JobResults, jobResult)
+					if len(jobResult.Outputs) > 0 {
+						allJobOutputs[matrixID] = jobResult.Outputs
+					}
 					if jobResult.Status == JobStatusFailed {
 						// Respect fail-fast (default true)
 						if job.Strategy.FailFast == nil || *job.Strategy.FailFast {
@@ -113,7 +131,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	return result, nil
 }
 
-func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job, matrix map[string]string) (*JobResult, error) {
+func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job, matrix map[string]string, needsOutputs map[string]map[string]string) (*JobResult, error) {
 	start := time.Now()
 	jobName := job.DisplayName(jobID)
 
@@ -216,6 +234,7 @@ func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job
 		Secrets:      r.secrets,
 		StepOutputs:  map[string]map[string]string{},
 		Matrix:       matrix,
+		NeedsOutputs: needsOutputs,
 	}
 
 	// Attach debugger to container
@@ -294,6 +313,14 @@ func (r *Runner) executeJob(ctx context.Context, jobID string, job *workflow.Job
 		}
 	}
 
+	// Resolve job-level outputs
+	if len(job.Outputs) > 0 {
+		result.Outputs = make(map[string]string)
+		for key, expression := range job.Outputs {
+			result.Outputs[key] = expr.Expand(expression, buildExprCtx(jobCtx))
+		}
+	}
+
 	result.Status = JobStatusPassed
 	result.Duration = time.Since(start)
 	return result, nil
@@ -310,7 +337,7 @@ func (r *Runner) executeStep(ctx context.Context, jobCtx *JobContext, step *work
 
 	// Check if condition
 	if step.If != "" {
-		if !r.evaluateCondition(step.If, jobCtx) {
+		if !expr.EvalBool(step.If, buildExprCtx(jobCtx)) {
 			result.Status = StepStatusSkipped
 			result.Duration = time.Since(start)
 			r.renderer.RenderStepComplete(result, len(jobCtx.Job.Steps))
@@ -339,7 +366,7 @@ func (r *Runner) executeStep(ctx context.Context, jobCtx *JobContext, step *work
 	stepEnv := MergeEnvMaps(jobCtx.Env, step.Env)
 
 	// Expand expressions in the run script
-	runScript := r.expandExpressions(step.Run, jobCtx)
+	runScript := expr.Expand(step.Run, buildExprCtx(jobCtx))
 
 	// Write script to container
 	scriptPath := ScriptPath(index)
@@ -432,6 +459,10 @@ func (r *Runner) executeUsesStep(ctx context.Context, jobCtx *JobContext, step *
 	case "composite":
 		fmt.Fprintf(os.Stdout, "    ▶ running composite action (%d step(s))\n", len(actionDef.Runs.Steps))
 		return r.executeCompositeAction(ctx, jobCtx, step, actionDef, index, start)
+	case "node20", "node16", "node12":
+		return r.executeNodeAction(ctx, jobCtx, step, actionDef, step.Uses, index, start)
+	case "docker":
+		return r.executeDockAction(ctx, jobCtx, step, actionDef, index, start)
 	default:
 		fmt.Fprintf(os.Stdout, "    ⚠ action type %q not supported locally — skipping\n", actionDef.Runs.Using)
 		result.Status = StepStatusSkipped
@@ -454,7 +485,7 @@ func (r *Runner) executeCompositeAction(ctx context.Context, jobCtx *JobContext,
 
 	for i, actionStep := range actionDef.Runs.Steps {
 		// Evaluate if: condition
-		if actionStep.If != "" && !r.evaluateCondition(actionStep.If, jobCtx) {
+		if actionStep.If != "" && !expr.EvalBool(actionStep.If, buildExprCtx(jobCtx)) {
 			continue
 		}
 
@@ -467,7 +498,7 @@ func (r *Runner) executeCompositeAction(ctx context.Context, jobCtx *JobContext,
 		stepEnv := MergeEnvMaps(jobCtx.Env, inputEnv, actionStep.Env)
 
 		// Expand expressions (including ${{ inputs.X }})
-		runScript := r.expandExpressionsWithInputs(actionStep.Run, jobCtx, inputs)
+		runScript := expr.Expand(actionStep.Run, buildExprCtxWithInputs(jobCtx, inputs))
 
 		scriptPath := fmt.Sprintf("/tmp/__ci_debugger_step_%d_%d.sh", index, i)
 		if err := r.docker.WriteScript(ctx, jobCtx.ContainerID, scriptPath, runScript); err != nil {
@@ -573,72 +604,45 @@ func (r *Runner) applyGitHubEnv(ctx context.Context, jobCtx *JobContext) {
 	})
 }
 
-// evaluateCondition evaluates a simple "if:" expression.
-func (r *Runner) evaluateCondition(condition string, jobCtx *JobContext) bool {
-	cond := strings.TrimSpace(condition)
-	// Strip ${{ }} wrapper if present
-	cond = strings.TrimPrefix(cond, "${{")
-	cond = strings.TrimSuffix(cond, "}}")
-	cond = strings.TrimSpace(cond)
-
-	switch cond {
-	case "success()", "":
-		// Check all previous steps passed
-		for _, sr := range jobCtx.StepResults {
-			if sr.Status == StepStatusFailed {
-				return false
-			}
-		}
-		return true
-	case "failure()":
-		for _, sr := range jobCtx.StepResults {
-			if sr.Status == StepStatusFailed {
-				return true
-			}
-		}
-		return false
-	case "always()":
-		return true
-	case "cancelled()":
-		return false
-	default:
-		// Best-effort: just run it
-		return true
+// buildExprCtx constructs an expr.Context from the current job state.
+func buildExprCtx(jobCtx *JobContext) *expr.Context {
+	return &expr.Context{
+		Env:     jobCtx.Env,
+		Secrets: jobCtx.Secrets,
+		Matrix:  jobCtx.Matrix,
+		Needs:   jobCtx.NeedsOutputs,
+		Steps:   jobCtx.StepOutputs,
+		Github:  buildGithubCtx(jobCtx),
+		Job:     map[string]string{"status": currentJobStatus(jobCtx)},
 	}
 }
 
-// expandExpressions does basic ${{ }} expansion.
-func (r *Runner) expandExpressions(s string, jobCtx *JobContext) string {
-	result := s
+// buildExprCtxWithInputs extends buildExprCtx with an inputs namespace.
+func buildExprCtxWithInputs(jobCtx *JobContext, inputs map[string]string) *expr.Context {
+	ctx := buildExprCtx(jobCtx)
+	ctx.Inputs = inputs
+	return ctx
+}
+
+// buildGithubCtx builds the github.* context map from GITHUB_* env vars.
+func buildGithubCtx(jobCtx *JobContext) map[string]string {
+	m := map[string]string{}
 	for k, v := range jobCtx.Env {
-		result = strings.ReplaceAll(result, "${{ env."+k+" }}", v)
-		result = strings.ReplaceAll(result, "${{env."+k+"}}", v)
-	}
-	for k, v := range jobCtx.Secrets {
-		result = strings.ReplaceAll(result, "${{ secrets."+k+" }}", v)
-		result = strings.ReplaceAll(result, "${{secrets."+k+"}}", v)
-	}
-	for k, v := range jobCtx.Matrix {
-		result = strings.ReplaceAll(result, "${{ matrix."+k+" }}", v)
-		result = strings.ReplaceAll(result, "${{matrix."+k+"}}", v)
-	}
-	return result
-}
-
-// expandExpressionsWithInputs extends expandExpressions with ${{ inputs.X }}
-// and ${{ steps.ID.outputs.KEY }} support for composite action steps.
-func (r *Runner) expandExpressionsWithInputs(s string, jobCtx *JobContext, inputs map[string]string) string {
-	result := r.expandExpressions(s, jobCtx)
-	for k, v := range inputs {
-		result = strings.ReplaceAll(result, "${{ inputs."+k+" }}", v)
-		result = strings.ReplaceAll(result, "${{inputs."+k+"}}", v)
-	}
-	for stepID, outputs := range jobCtx.StepOutputs {
-		for outKey, outVal := range outputs {
-			result = strings.ReplaceAll(result, "${{ steps."+stepID+".outputs."+outKey+" }}", outVal)
+		if strings.HasPrefix(k, "GITHUB_") {
+			m[strings.ToLower(strings.TrimPrefix(k, "GITHUB_"))] = v
 		}
 	}
-	return result
+	return m
+}
+
+// currentJobStatus returns "failure" if any prior step failed, else "success".
+func currentJobStatus(jobCtx *JobContext) string {
+	for _, sr := range jobCtx.StepResults {
+		if sr.Status == StepStatusFailed {
+			return "failure"
+		}
+	}
+	return "success"
 }
 
 // prefixWriter adds a prefix to each line written to it.
