@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 
 	"github.com/murataslan1/ci-debugger/internal/azdevops"
@@ -32,6 +34,8 @@ func newRunCmd() *cobra.Command {
 		breakOnError bool
 		// Reporting
 		envReport bool
+		// Watch
+		watch bool
 	)
 
 	cmd := &cobra.Command{
@@ -135,6 +139,7 @@ func newRunCmd() *cobra.Command {
 				BreakAfter:        breakAfter,
 				BreakOnError:      breakOnError,
 				EnvReport:         envReport,
+				Watch:             watch,
 			}
 
 			r := runner.NewRunner(wf, cfg, dockerClient)
@@ -171,11 +176,60 @@ func newRunCmd() *cobra.Command {
 			result, err := r.Run(ctx)
 			if err != nil {
 				renderer.RenderError(err)
-				return err
+				if !watch {
+					return err
+				}
+			} else {
+				renderer.RenderSummary(result, time.Since(start))
 			}
 
-			// Print summary
-			renderer.RenderSummary(result, time.Since(start))
+			if watch {
+				watcher, err := fsnotify.NewWatcher()
+				if err != nil {
+					return fmt.Errorf("watch: %w", err)
+				}
+				defer watcher.Close()
+
+				if workflowFile != "" {
+					watcher.Add(workflowFile) //nolint
+				}
+				addWorkspaceWatch(watcher, cwd)
+
+				fmt.Fprintf(os.Stderr, "\n\033[90m◎ Watching for changes… (Ctrl+C to stop)\033[0m\n")
+
+				debounce := time.NewTimer(0)
+				debounce.Stop()
+
+				for {
+					select {
+					case event, ok := <-watcher.Events:
+						if !ok {
+							return nil
+						}
+						if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+							debounce.Reset(500 * time.Millisecond)
+						}
+					case watchErr, ok := <-watcher.Errors:
+						if !ok {
+							return nil
+						}
+						fmt.Fprintf(os.Stderr, "watch error: %v\n", watchErr)
+					case <-debounce.C:
+						fmt.Print("\033[2J\033[H") // clear screen
+						renderer.RenderWorkflowStart(wf, wf.On.String())
+						start := time.Now()
+						result, err = r.Run(ctx)
+						if err != nil {
+							renderer.RenderError(err)
+						} else {
+							renderer.RenderSummary(result, time.Since(start))
+						}
+						fmt.Fprintf(os.Stderr, "\n\033[90m◎ Watching for changes… (Ctrl+C to stop)\033[0m\n")
+					case <-ctx.Done():
+						return nil
+					}
+				}
+			}
 
 			// Exit with non-zero if any job failed
 			for _, jr := range result.JobResults {
@@ -198,7 +252,38 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&breakAfter, "break-after", nil, "Break after a named step")
 	cmd.Flags().BoolVar(&breakOnError, "break-on-error", false, "Break after any step that fails")
 	cmd.Flags().BoolVar(&envReport, "env-report", false, "Show which GitHub env vars are real, stubbed, or unavailable locally, then exit")
+	cmd.Flags().BoolVar(&watch, "watch", false, "Re-run automatically when workflow or workspace files change")
 
 	return cmd
+}
+
+var watchExtensions = map[string]bool{
+	".go": true, ".yml": true, ".yaml": true,
+	".ts": true, ".js": true, ".py": true,
+	".sh": true, ".env": true,
+}
+
+var watchSkipDirs = map[string]bool{
+	"vendor": true, "node_modules": true, ".git": true, "bin": true,
+}
+
+func addWorkspaceWatch(watcher *fsnotify.Watcher, dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			if !watchSkipDirs[name] {
+				watcher.Add(filepath.Join(dir, name)) //nolint
+			}
+			continue
+		}
+		ext := filepath.Ext(name)
+		if watchExtensions[ext] || name == "Makefile" || name == ".secrets" {
+			watcher.Add(filepath.Join(dir, name)) //nolint
+		}
+	}
 }
 
