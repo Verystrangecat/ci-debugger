@@ -134,7 +134,86 @@ Services are reachable by hostname (`postgres`, `redis`, etc.) inside your job c
   ✓ [3/3] Cache
 ```
 
-Node and Docker action types are skipped with a warning.
+### Node & Docker `uses:` Actions
+
+Node (`node20`, `node16`, `node12`) and Docker action types are now executed locally — not just skipped.
+
+**Node actions** are downloaded from GitHub, extracted to `/tmp`, copied into the job container and run with `node`:
+
+```
+↓ fetching actions/github-script@v7...
+  Running script...
+  ✓ actions/github-script@v7  (1.2s)
+```
+
+**Docker actions** pull the action's image and run it as a sidecar container with `INPUT_*` env vars and the workspace mounted:
+
+```
+↓ fetching docker://alpine:3.18...
+  Pulling image alpine:3.18...
+  ✓ docker action  (0.8s)
+```
+
+Actions that use a `Dockerfile` (build-time) are skipped with a warning — only pre-built images are supported.
+
+### Full `${{ }}` Expression Engine
+
+All expression namespaces are resolved:
+
+| Namespace | Example |
+|-----------|---------|
+| `env` | `${{ env.DATABASE_URL }}` |
+| `secrets` | `${{ secrets.GITHUB_TOKEN }}` |
+| `matrix` | `${{ matrix.node-version }}` |
+| `inputs` | `${{ inputs.version }}` |
+| `github` | `${{ github.sha }}`, `${{ github.ref }}` |
+| `needs` | `${{ needs.build.outputs.artifact }}` |
+| `steps` | `${{ steps.setup.outputs.path }}` |
+| `job` | `${{ job.status }}` |
+
+`if:` conditions support `success()`, `failure()`, `always()`, `cancelled()`, comparisons (`==`, `!=`), logical operators (`&&`, `||`, `!`), and string functions (`contains()`, `startsWith()`, `endsWith()`).
+
+### Job Outputs Propagation
+
+Jobs can declare `outputs:` and downstream jobs read them via `needs.JOB.outputs.KEY`:
+
+```yaml
+jobs:
+  build:
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - id: tag
+        run: echo "version=1.2.3" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: build
+    steps:
+      - run: echo "Deploying ${{ needs.build.outputs.version }}"
+```
+
+```
+▶ build
+  ✓ [1/1] tag
+
+▶ deploy
+  Deploying 1.2.3
+  ✓ [1/1] run
+```
+
+### Watch Mode
+
+Re-run the workflow automatically whenever workflow files or workspace source files change:
+
+```bash
+ci-debugger run --watch -W .github/workflows/ci.yml
+```
+
+```
+◎ Watching for changes… (Ctrl+C to stop)
+```
+
+Watches `.go`, `.yml`, `.yaml`, `.ts`, `.js`, `.py`, `.sh`, `.env`, `Makefile`, and `.secrets` files. Skips `vendor/`, `node_modules/`, `.git/`, and `bin/`. Changes are debounced (500ms) to avoid double-triggers on save.
 
 ### Azure DevOps Pipelines
 
@@ -245,6 +324,10 @@ ci-debugger  My CI Workflow
 | Matrix builds | ✓ | ✓ |
 | Service containers | ✓ | ✓ |
 | Composite `uses:` actions | ✓ | ✓ |
+| Node/Docker `uses:` actions | ✓ | ✓ |
+| Full `${{ }}` expression engine | ✓ | ~ |
+| Job outputs (`needs.X.outputs.Y`) | ✓ | ✓ |
+| Watch mode (`--watch`) | ✓ | ✗ |
 | Azure DevOps Pipelines | ✓ | ✗ |
 | Static analysis (`scan`) | ✓ | ✗ |
 | Env var transparency (`--env-report`) | ✓ | ✗ |
@@ -312,6 +395,9 @@ ci-debugger run --break-on-error
 # Break before a specific step
 ci-debugger run --break-before "Run tests"
 
+# Watch mode — re-run on file change
+ci-debugger run --watch
+
 # Full output
 ci-debugger run -v
 ```
@@ -362,8 +448,8 @@ ci-debugger run --platform ubuntu-latest=my-registry/ubuntu:custom
 ## Known Limitations
 
 - **Linux runners only** — `windows-latest` and `macos-latest` map to the ubuntu image as best-effort
-- **Node/Docker `uses:` actions** — composite actions run inline; node and docker action types are skipped with a warning
-- **Expression evaluation** — `${{ env.X }}`, `${{ secrets.X }}`, `${{ matrix.X }}`, and `${{ inputs.X }}` are supported. Complex expressions may not evaluate correctly
+- **Dockerfile-based Docker actions** — actions that build from a `Dockerfile` are skipped with a warning; only pre-built images (`docker://image`) are supported
+- **`GITHUB_TOKEN` and OIDC** — not available locally; provide via `.secrets` for workflows that need it
 
 ---
 
@@ -379,11 +465,11 @@ ci-debugger run --platform ubuntu-latest=my-registry/ubuntu:custom
 - [x] [Service containers](https://github.com/murataslan1/ci-debugger/issues/6)
 - [x] [Matrix builds](https://github.com/murataslan1/ci-debugger/issues/7)
 
-### v0.4 — Coming up
-- [ ] Node/Docker `uses:` action execution
-- [ ] Full `${{ }}` expression engine
-- [ ] Workflow `outputs:` propagation across jobs
-- [ ] `--watch` mode — re-run on file change
+### v0.4 ✓
+- [x] Node/Docker `uses:` action execution
+- [x] Full `${{ }}` expression engine
+- [x] Job `outputs:` propagation (`needs.JOB.outputs.KEY`)
+- [x] `--watch` mode — re-run on file change
 
 Have an idea? [Open an issue](https://github.com/murataslan1/ci-debugger/issues/new).
 
