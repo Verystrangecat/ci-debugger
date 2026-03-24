@@ -280,6 +280,65 @@ func (c *Client) OpenInteractiveShell(ctx context.Context, containerID, workDir 
 	return nil
 }
 
+// CopyDirToContainer copies the contents of localDir into destDir inside the container.
+// destDir must already exist in the container (e.g. /tmp/).
+// Each file is placed at destDir/<relpath> where relpath is relative to localDir.
+func (c *Client) CopyDirToContainer(ctx context.Context, containerID, localDir, destDir string) error {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(localDir, path)
+		if err != nil {
+			return err
+		}
+		if relPath == "." {
+			return nil // skip root dir entry
+		}
+		if info.IsDir() {
+			return tw.WriteHeader(&tar.Header{
+				Name:     relPath + "/",
+				Mode:     0755,
+				Typeflag: tar.TypeDir,
+			})
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := tw.WriteHeader(&tar.Header{
+			Name: relPath,
+			Mode: int64(info.Mode().Perm()),
+			Size: int64(len(data)),
+		}); err != nil {
+			return err
+		}
+		_, err = tw.Write(data)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("walking %s: %w", localDir, err)
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	return c.cli.CopyToContainer(ctx, containerID, destDir, &buf, container.CopyToContainerOptions{})
+}
+
+// WaitContainer waits for a container to stop and returns its exit code.
+func (c *Client) WaitContainer(ctx context.Context, containerID string) (int, error) {
+	statusCh, errCh := c.cli.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		return -1, fmt.Errorf("waiting for container: %w", err)
+	case status := <-statusCh:
+		return int(status.StatusCode), nil
+	}
+}
+
 // mapEnv converts a map to KEY=VALUE slice.
 func mapEnv(m map[string]string) []string {
 	var result []string
